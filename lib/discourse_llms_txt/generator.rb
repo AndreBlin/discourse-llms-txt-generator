@@ -9,6 +9,8 @@ module DiscourseLlmsTxt
     CACHE_KEY_SITEMAPS = "llms_txt_sitemaps"
     CACHE_KEY_LAST_CHECK = "llms_txt_last_content_check"
     CACHE_KEY_LAST_UPDATE = "llms_txt_last_update_timestamp"
+    # Obergrenze auch bei "all", damit llms-full.txt nicht unbegrenzt wachsen kann
+    MAX_TOPICS = 10_000
 
     class << self
       def generate_navigation
@@ -17,8 +19,12 @@ module DiscourseLlmsTxt
         end
       end
 
+      # Der Inhalt enthält nur öffentliche Themen und ist für alle Besucher gleich. Ohne Cache
+      # würde jeder anonyme Aufruf die komplette Liste neu aufbauen.
       def generate_full_content
-        build_full_content
+        Rails.cache.fetch(CACHE_KEY_FULL, expires_in: cache_duration) do
+          build_full_content
+        end
       end
 
       def clear_cache
@@ -55,6 +61,22 @@ module DiscourseLlmsTxt
         Rails.cache.fetch(CACHE_KEY_SITEMAPS, expires_in: cache_duration) do
           build_sitemaps
         end
+      end
+
+      # Nur Tags, die an mindestens einem öffentlichen, sichtbaren Thema hängen
+      def public_tags
+        Tag.where(
+          id:
+            TopicTag
+              .joins(topic: :category)
+              .merge(Topic.visible.where(archetype: "regular"))
+              .where(categories: { read_restricted: false })
+              .select(:tag_id),
+        )
+      end
+
+      def public_tag?(tag)
+        public_tags.exists?(id: tag.id)
       end
 
       def generate_category_llms(category)
@@ -290,7 +312,7 @@ module DiscourseLlmsTxt
         when "large"
           5000
         when "all"
-          nil
+          MAX_TOPICS
         else
           2500
         end
@@ -329,7 +351,7 @@ module DiscourseLlmsTxt
           end
 
         if SiteSetting.tagging_enabled
-          Tag.find_each do |tag|
+          public_tags.find_each do |tag|
             urls << "#{Discourse.base_url}/tag/#{CGI.escape(tag.name)}/llms.txt"
           end
         end

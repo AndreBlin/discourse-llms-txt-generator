@@ -195,6 +195,7 @@ RSpec.describe DiscourseLlmsTxt::LlmsController do
 
     before do
       SiteSetting.tagging_enabled = true
+      Fabricate(:topic, tags: [tag])
     end
 
     it "returns tag llms.txt" do
@@ -232,6 +233,50 @@ RSpec.describe DiscourseLlmsTxt::LlmsController do
       get "/tag/#{tag.name}/llms.txt"
 
       expect(response.status).to eq(404)
+    end
+  end
+
+  describe "Tags und Zwischenspeicher" do
+    fab!(:public_category) { Fabricate(:category) }
+    fab!(:private_category) { Fabricate(:private_category, group: Fabricate(:group)) }
+    fab!(:public_tag) { Fabricate(:tag, name: "oeffentlich") }
+    fab!(:secret_tag) { Fabricate(:tag, name: "intern-projekt-x") }
+
+    before do
+      SiteSetting.tagging_enabled = true
+      Fabricate(:topic, category: public_category, tags: [public_tag])
+      Fabricate(:topic, category: private_category, tags: [secret_tag])
+      Rails.cache.clear
+    end
+
+    it "nennt in sitemaps.txt nur Tags öffentlicher Themen" do
+      get "/sitemaps.txt"
+
+      expect(response.body).to include("/tag/oeffentlich/llms.txt")
+      expect(response.body).not_to include("intern-projekt-x")
+    end
+
+    it "antwortet für Tags ohne öffentliches Thema mit 404" do
+      get "/tag/intern-projekt-x/llms.txt"
+      expect(response.status).to eq(404)
+
+      get "/tag/oeffentlich/llms.txt"
+      expect(response.status).to eq(200)
+    end
+
+    it "baut llms-full.txt nur einmal pro Cache-Zeitraum" do
+      SiteSetting.llms_txt_posts_limit = "all"
+      expect(DiscourseLlmsTxt::Generator).to receive(:build_full_content).once.and_call_original
+
+      2.times do
+        get "/llms-full.txt"
+        expect(response.status).to eq(200)
+      end
+    end
+
+    it "begrenzt die Option \"all\" auf eine feste Obergrenze" do
+      SiteSetting.llms_txt_posts_limit = "all"
+      expect(DiscourseLlmsTxt::Generator.send(:posts_limit)).to eq(DiscourseLlmsTxt::Generator::MAX_TOPICS)
     end
   end
 end

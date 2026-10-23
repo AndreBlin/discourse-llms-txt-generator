@@ -73,6 +73,8 @@ module DiscourseLlmsTxt
     def tag
       tag = Tag.find_by_name(params[:tag_name])
       return render_404 unless tag && SiteSetting.tagging_enabled
+      # Tags ohne öffentliches Thema nicht verraten
+      return render_404 unless DiscourseLlmsTxt::Generator.public_tag?(tag)
 
       canonical_url = "#{Discourse.base_url}/tag/#{CGI.escape(tag.name)}"
       response.headers['Link'] = "<#{canonical_url}>; rel=\"canonical\""
