@@ -10,6 +10,8 @@
 
 ---
 
+> **MoinHei-Fork:** Gehärtet nach einem Security-Scan am 25.10.2026 (keine Whispers, Anmeldepflicht, versteckte Tags, Markdown-Injektion, Cache und Obergrenze für `llms-full.txt`), siehe [CHANGELOG.md](CHANGELOG.md). Auf moinhei.de ist der Stand per Commit in `app.yml` festgelegt; Updates bewusst einspielen. Der Core liefert `/llms.txt` selbst, das Plugin deckt `/llms-full.txt`, `/sitemaps.txt` sowie Kategorie-, Themen- und Tag-Dateien ab.
+
 ## 📚 About llms.txt
 
 This project implements the **[llms.txt standard](https://llmstxt.org/)** for Discourse forums, making your community content discoverable and accessible to Large Language Models (LLMs) and AI systems.

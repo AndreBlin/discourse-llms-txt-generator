@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security (MoinHei-Fork, 25.10.2026)
+- `/t/{id}/llms.txt` gibt nur noch reguläre Beiträge aus (keine Whispers, keine Small Actions); jeder Beitragstext steht als Zitat und kann keine Überschriften oder Autoren vortäuschen
+- Bei `login_required` antworten die Endpunkte für Anonyme mit 404
+- Tags aus Tag-Gruppen mit Rechten tauchen weder in `sitemaps.txt` noch unter `/tag/{name}/llms.txt` auf
+- Titel und Namen werden für Markdown entschärft (`[ ] ( ) < > \` und Backtick)
+- `llms-full.txt` wird zwischengespeichert; "all" ist auf 10.000 Themen begrenzt
+- Hinweis: Der Discourse-Core liefert `/llms.txt` selbst aus (`static#llms_txt`); die Plugin-Route dafür ist verdeckt
+
 ### Added
 - New setting `llms_txt_include_excerpts` to optionally include post excerpts (up to 500 characters) in llms-full.txt topic list
 - Setting `llms_txt_post_excerpt_length` re-enabled for controlling excerpt length (was removed in v1.1.0, now restored)
