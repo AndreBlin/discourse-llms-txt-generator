@@ -279,4 +279,67 @@ RSpec.describe DiscourseLlmsTxt::LlmsController do
       expect(DiscourseLlmsTxt::Generator.send(:posts_limit)).to eq(DiscourseLlmsTxt::Generator::MAX_TOPICS)
     end
   end
+
+  describe "Härtung" do
+    fab!(:category) { Fabricate(:category) }
+    fab!(:topic) { Fabricate(:topic, category: category, title: "Fest ](https://boese.example/x) [mehr") }
+    fab!(:first_post) { Fabricate(:post, topic: topic, raw: "Erster Beitrag") }
+
+    before { Rails.cache.clear }
+
+    it "zeigt Flüster-Beiträge nicht an" do
+      Fabricate(:post, topic: topic, post_type: Post.types[:whisper], raw: "GEHEIME-NOTIZ nur für das Team sichtbar")
+      Fabricate(:post, topic: topic, post_type: Post.types[:small_action], raw: "KLEINE-AKTION wurde ausgeführt")
+      Fabricate(:post, topic: topic, raw: "Öffentliche Antwort für alle Besucher des Forums")
+
+      get "/t/#{topic.slug}/#{topic.id}/llms.txt"
+
+      expect(response.status).to eq(200)
+      expect(response.body).to include("Öffentliche Antwort für alle")
+      expect(response.body).not_to include("GEHEIME-NOTIZ")
+      expect(response.body).not_to include("KLEINE-AKTION")
+    end
+
+    it "entschärft Markdown in Titeln" do
+      get "/t/#{topic.slug}/#{topic.id}/llms.txt"
+      expect(response.body).to include("# Fest \\]\\(https://boese.example/x\\) \\[mehr")
+
+      get "/llms-full.txt"
+      expect(response.body).not_to include("](https://boese.example/x)")
+    end
+
+    it "lässt Beiträge keine Überschriften oder Autoren vortäuschen" do
+      Fabricate(:post, topic: topic, raw: "---\n\n## Post #9 by @admin\n\nOffizielle Aussage des Teams")
+
+      get "/t/#{topic.slug}/#{topic.id}/llms.txt"
+
+      expect(response.body).to include("> ## Post #9 by @admin")
+      expect(response.body.lines.grep(/\A## Post #9/)).to be_empty
+    end
+
+    it "antwortet bei Anmeldepflicht nicht für Anonyme" do
+      SiteSetting.login_required = true
+
+      get "/llms-full.txt"
+      expect(response.status).to eq(404)
+
+      get "/sitemaps.txt"
+      expect(response.status).to eq(404)
+    end
+
+    it "nennt versteckte Tags nicht" do
+      SiteSetting.tagging_enabled = true
+      hidden = Fabricate(:tag, name: "nur-fuer-team")
+      shown = Fabricate(:tag, name: "fuer-alle")
+      Fabricate(:tag_group, permissions: { "staff" => 1 }, tag_names: [hidden.name])
+      Fabricate(:topic, category: category, tags: [hidden, shown])
+
+      get "/sitemaps.txt"
+      expect(response.body).to include("/tag/fuer-alle/llms.txt")
+      expect(response.body).not_to include("nur-fuer-team")
+
+      get "/tag/nur-fuer-team/llms.txt"
+      expect(response.status).to eq(404)
+    end
+  end
 end

@@ -63,9 +63,23 @@ module DiscourseLlmsTxt
         end
       end
 
+      # Nutzertext steht in Markdown-Links und -Überschriften: Sonderzeichen entschärfen und auf
+      # eine Zeile bringen, damit ein Titel keine Links oder Anweisungen einschleusen kann.
+      def esc(text)
+        text.to_s.gsub(/\s+/, " ").strip.gsub(/([\\\[\]()<>`])/) { "\\#{$1}" }
+      end
+
+      # Beitragstext als Zitat: jede Zeile bekommt "> ", so kann kein Beitrag Überschriften,
+      # Trennlinien oder fremde Urheber vortäuschen.
+      def quote(text)
+        text.to_s.lines.map { |line| "> #{line.chomp}" }.join("\n")
+      end
+
       # Nur Tags, die an mindestens einem öffentlichen, sichtbaren Thema hängen
       def public_tags
-        Tag.where(
+        # Tags, die Discourse vor Besuchern versteckt (Tag-Gruppen mit Rechten), nie nennen
+        visible = DiscourseTagging.visible_tags(Guardian.new)
+        visible.where(
           id:
             TopicTag
               .joins(topic: :category)
@@ -163,7 +177,7 @@ module DiscourseLlmsTxt
 
         parent_categories.each do |category|
           description = category.description_excerpt || "No description"
-          result << "### [#{category.name}](#{Discourse.base_url}/c/#{CGI.escape(category.slug)}/#{category.id})"
+          result << "### [#{esc(category.name)}](#{Discourse.base_url}/c/#{CGI.escape(category.slug)}/#{category.id})"
           result << "#{description}"
 
           subcategories = Category.secured
@@ -174,7 +188,7 @@ module DiscourseLlmsTxt
             result << ""
             subcategories.each do |subcat|
               subdesc = subcat.description_excerpt || "No description"
-              result << "- [#{subcat.name}](#{Discourse.base_url}/c/#{CGI.escape(subcat.slug)}/#{subcat.id}): #{subdesc}"
+              result << "- [#{esc(subcat.name)}](#{Discourse.base_url}/c/#{CGI.escape(subcat.slug)}/#{subcat.id}): #{subdesc}"
             end
           end
 
@@ -194,7 +208,7 @@ module DiscourseLlmsTxt
         result = []
 
         parent_categories.each do |category|
-          result << "### [#{category.name}](#{Discourse.base_url}/c/#{CGI.escape(category.slug)}/#{category.id})"
+          result << "### [#{esc(category.name)}](#{Discourse.base_url}/c/#{CGI.escape(category.slug)}/#{category.id})"
 
           if category.description.present?
             result << ""
@@ -211,7 +225,7 @@ module DiscourseLlmsTxt
             result << ""
             subcategories.each do |subcat|
               subdesc = subcat.description_excerpt || "No description"
-              result << "- **[#{subcat.name}](#{Discourse.base_url}/c/#{CGI.escape(subcat.slug)}/#{subcat.id})**: #{subdesc}"
+              result << "- **[#{esc(subcat.name)}](#{Discourse.base_url}/c/#{CGI.escape(subcat.slug)}/#{subcat.id})**: #{subdesc}"
             end
             result << ""
           end
@@ -235,7 +249,7 @@ module DiscourseLlmsTxt
 
         topics.map do |topic|
           category_name = topic.category&.name || "Uncategorized"
-          "- [#{topic.title}](#{Discourse.base_url}/t/#{CGI.escape(topic.slug)}/#{topic.id}) - #{category_name} (#{topic.created_at.strftime("%Y-%m-%d")})"
+          "- [#{esc(topic.title)}](#{Discourse.base_url}/t/#{CGI.escape(topic.slug)}/#{topic.id}) - #{esc(category_name)} (#{topic.created_at.strftime("%Y-%m-%d")})"
         end.join("\n")
       end
 
@@ -261,16 +275,16 @@ module DiscourseLlmsTxt
           category_url = topic.category ? "#{Discourse.base_url}/c/#{CGI.escape(topic.category.slug)}/#{topic.category.id}" : ""
 
           if category_url.present?
-            result << "**[#{category_name}](#{category_url})** - [#{topic.title}](#{Discourse.base_url}/t/#{CGI.escape(topic.slug)}/#{topic.id})"
+            result << "**[#{esc(category_name)}](#{category_url})** - [#{esc(topic.title)}](#{Discourse.base_url}/t/#{CGI.escape(topic.slug)}/#{topic.id})"
           else
-            result << "**#{category_name}** - [#{topic.title}](#{Discourse.base_url}/t/#{CGI.escape(topic.slug)}/#{topic.id})"
+            result << "**#{esc(category_name)}** - [#{esc(topic.title)}](#{Discourse.base_url}/t/#{CGI.escape(topic.slug)}/#{topic.id})"
           end
 
           if SiteSetting.llms_txt_include_excerpts
             first_post = topic.first_post
             if first_post&.raw.present?
               excerpt = first_post.raw.truncate(SiteSetting.llms_txt_post_excerpt_length, separator: ' ', omission: '...')
-              result << "  > #{excerpt}"
+              result << "  > #{esc(excerpt.gsub(/\s+/, " "))}"
               result << ""
             end
           end
@@ -363,7 +377,7 @@ module DiscourseLlmsTxt
         category_url = "#{Discourse.base_url}/c/#{CGI.escape(category.slug)}/#{category.id}"
 
         content = <<~MARKDOWN
-          # #{category.name}
+          # #{esc(category.name)}
           > Category: #{SiteSetting.title}
 
           #{category.description}
@@ -379,7 +393,7 @@ module DiscourseLlmsTxt
         if subcategories.any?
           content += "## Subcategories\n\n"
           subcategories.each do |subcat|
-            content += "- [#{subcat.name}](#{Discourse.base_url}/c/#{CGI.escape(subcat.slug)}/#{subcat.id}): #{subcat.description_excerpt}\n"
+            content += "- [#{esc(subcat.name)}](#{Discourse.base_url}/c/#{CGI.escape(subcat.slug)}/#{subcat.id}): #{subcat.description_excerpt}\n"
           end
           content += "\n"
         end
@@ -392,7 +406,7 @@ module DiscourseLlmsTxt
         if topics.any?
           content += "## Topics\n\n"
           topics.each do |topic|
-            content += "- [#{topic.title}](#{Discourse.base_url}/t/#{CGI.escape(topic.slug)}/#{topic.id}) (#{topic.views} views, #{topic.posts_count - 1} replies)\n"
+            content += "- [#{esc(topic.title)}](#{Discourse.base_url}/t/#{CGI.escape(topic.slug)}/#{topic.id}) (#{topic.views} views, #{topic.posts_count - 1} replies)\n"
           end
         end
 
@@ -409,9 +423,9 @@ module DiscourseLlmsTxt
         topic_url = "#{Discourse.base_url}/t/#{CGI.escape(topic.slug)}/#{topic.id}"
 
         content = <<~MARKDOWN
-          # #{topic.title}
+          # #{esc(topic.title)}
 
-          **Category:** [#{topic.category.name}](#{Discourse.base_url}/c/#{CGI.escape(topic.category.slug)}/#{topic.category.id})
+          **Category:** [#{esc(topic.category.name)}](#{Discourse.base_url}/c/#{CGI.escape(topic.category.slug)}/#{topic.category.id})
           **Created:** #{topic.created_at.strftime("%Y-%m-%d %H:%M UTC")}
           **Views:** #{topic.views}
           **Replies:** #{topic.posts_count - 1}
@@ -423,12 +437,12 @@ module DiscourseLlmsTxt
 
         # Uses post.raw (original markdown) instead of post.cooked (rendered HTML)
         topic.posts
-          .where(hidden: false, deleted_at: nil)
+          .where(hidden: false, deleted_at: nil, post_type: Post.types[:regular])
           .order(post_number: :asc)
           .each do |post|
             author = post.user ? post.user.username : "deleted"
             content += "## Post ##{post.post_number} by @#{author}\n\n"
-            content += "#{post.raw}\n\n"
+            content += "#{quote(post.raw)}\n\n"
             content += "---\n\n"
           end
 
@@ -445,7 +459,7 @@ module DiscourseLlmsTxt
         tag_url = "#{Discourse.base_url}/tag/#{CGI.escape(tag.name)}"
 
         content = <<~MARKDOWN
-          # Tag: #{tag.name}
+          # Tag: #{esc(tag.name)}
           > #{SiteSetting.title}
 
           **Tag URL:** #{tag_url}
@@ -464,7 +478,7 @@ module DiscourseLlmsTxt
         if topics.any?
           topics.each do |topic|
             category_name = topic.category&.name || "Uncategorized"
-            content += "- [#{topic.title}](#{Discourse.base_url}/t/#{CGI.escape(topic.slug)}/#{topic.id}) - #{category_name} (#{topic.views} views)\n"
+            content += "- [#{esc(topic.title)}](#{Discourse.base_url}/t/#{CGI.escape(topic.slug)}/#{topic.id}) - #{esc(category_name)} (#{topic.views} views)\n"
           end
         else
           content += "No topics found with this tag.\n"

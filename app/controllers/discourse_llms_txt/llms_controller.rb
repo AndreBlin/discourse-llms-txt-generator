@@ -10,6 +10,7 @@ module DiscourseLlmsTxt
     skip_before_action :redirect_to_login_if_required
 
     before_action :check_enabled
+    before_action :check_login_not_required
     before_action :check_indexing_allowed
     before_action :track_access
 
@@ -97,6 +98,12 @@ module DiscourseLlmsTxt
       unless SiteSetting.llms_txt_enabled
         render plain: "llms.txt generator is disabled", status: :not_found
       end
+    end
+
+    # Ohne diese Prüfung würde skip_before_action :redirect_to_login_if_required die Anmeldepflicht
+    # der Seite aushebeln: öffentliche Kategorien wären dann anonym lesbar.
+    def check_login_not_required
+      render_404 if SiteSetting.login_required? && !current_user
     end
 
     def check_indexing_allowed
